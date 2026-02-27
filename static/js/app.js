@@ -98,6 +98,23 @@ function showMain() {
   hide($("loginScreen"));
   show($("mainScreen"));
   loadFiles();
+  restoreRemoteTasks();
+}
+
+async function restoreRemoteTasks() {
+  try {
+    const res = await fetch('/api/remote-download/tasks', { credentials: 'same-origin' });
+    if (!res.ok) return;
+    const tasks = await res.json();
+    if (!tasks.length) return;
+    tasks.forEach((task) => {
+      // avoid adding duplicate cards if already present
+      if (!$(`remote-task-${task.id}`)) {
+        addRemoteTask(task.id, task.filename || task.url);
+      }
+      pollRemoteTask(task.id);
+    });
+  } catch { /* silent */ }
 }
 
 /* ── Login handlers ─────────────────────────────────────────────────────── */
@@ -651,6 +668,175 @@ async function doCreateFile() {
   }
 }
 
+/* ── Remote Download ────────────────────────────────────────────── */
+
+$('remoteDownloadBtn').addEventListener('click', openRemoteDownload);
+
+function openRemoteDownload() {
+  $('remoteUrlInput').value = '';
+  $('remoteFilenameInput').value = '';
+  $('remoteDownloadError').textContent = '';
+  show($('remoteDownloadBackdrop'));
+  setTimeout(() => $('remoteUrlInput').focus(), 80);
+}
+
+$('remoteDownloadCancelBtn').addEventListener('click', closeRemoteDownload);
+$('remoteDownloadBackdrop').addEventListener('click', (e) => {
+  if (e.target === $('remoteDownloadBackdrop')) closeRemoteDownload();
+});
+
+function closeRemoteDownload() {
+  hide($('remoteDownloadBackdrop'));
+}
+
+$('remoteDownloadConfirmBtn').addEventListener('click', doRemoteDownload);
+$('remoteUrlInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') doRemoteDownload();
+});
+
+async function doRemoteDownload() {
+  const url      = $('remoteUrlInput').value.trim();
+  const filename = $('remoteFilenameInput').value.trim();
+  const errEl    = $('remoteDownloadError');
+  errEl.textContent = '';
+
+  if (!url) { errEl.textContent = '请输入下载链接'; return; }
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    errEl.textContent = '请输入有效的 http/https 链接';
+    return;
+  }
+
+  const btn = $('remoteDownloadConfirmBtn');
+  btn.disabled = true;
+
+  try {
+    const res = await fetch('/api/remote-download', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url, filename }),
+      credentials: 'same-origin',
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      errEl.textContent = data.error || '启动失败';
+      return;
+    }
+    closeRemoteDownload();
+    addRemoteTask(data.task_id, data.filename || url);
+    pollRemoteTask(data.task_id);
+  } catch {
+    errEl.textContent = '网络错误，请重试';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function addRemoteTask(taskId, filename) {
+  show($('remoteTasksPanel'));
+  const item = document.createElement('div');
+  item.className = 'remote-task-item';
+  item.id = `remote-task-${taskId}`;
+  item.innerHTML = `
+    <div class="remote-task-header">
+      <span class="material-icons-round" style="font-size:18px;color:var(--md-primary);flex-shrink:0">cloud_download</span>
+      <span class="remote-task-name" title="${esc(filename)}">${esc(filename)}</span>
+      <span class="remote-task-status" id="remote-task-status-${taskId}">等待中…</span>
+      <button class="icon-btn remote-task-cancel-btn" id="remote-task-cancel-${taskId}" title="取消下载">
+        <span class="material-icons-round" style="font-size:18px">close</span>
+      </button>
+    </div>
+    <div class="md-progress-bar">
+      <div class="md-progress-bar__fill" id="remote-task-bar-${taskId}" style="width:0%"></div>
+    </div>
+    <div class="remote-task-detail" id="remote-task-detail-${taskId}"></div>
+  `;
+  $('remoteTasksList').appendChild(item);
+  $(`remote-task-cancel-${taskId}`).addEventListener('click', () => cancelRemoteTask(taskId));
+}
+
+async function cancelRemoteTask(taskId) {
+  try {
+    await fetch(`/api/remote-download/cancel/${taskId}`, {
+      method: 'DELETE',
+      credentials: 'same-origin',
+    });
+  } catch { /* silent */ }
+}
+
+function pollRemoteTask(taskId) {
+  const timer = setInterval(async () => {
+    try {
+      const res = await fetch(`/api/remote-download/status/${taskId}`, {
+        credentials: 'same-origin',
+      });
+      if (!res.ok) { clearInterval(timer); return; }
+      const task = await res.json();
+
+      const statusEl = $(`remote-task-status-${taskId}`);
+      const barEl    = $(`remote-task-bar-${taskId}`);
+      const detailEl = $(`remote-task-detail-${taskId}`);
+      if (!statusEl) { clearInterval(timer); return; }
+
+      if (task.status === 'pending' || task.status === 'running') {
+        const pct = task.progress || 0;
+        barEl.style.width = pct + '%';
+        barEl.style.background = '';
+        statusEl.textContent = pct + '%';
+        statusEl.className = 'remote-task-status';
+        if (task.total) {
+          detailEl.textContent = `${fmtSize(task.received)} / ${fmtSize(task.total)}`;
+        } else if (task.received > 0) {
+          detailEl.textContent = `已接收 ${fmtSize(task.received)}`;
+        }
+      } else if (task.status === 'retrying') {
+        barEl.style.background = 'var(--md-secondary)';
+        statusEl.textContent = `重试 ${task.retry}/${task.max_retries}`;
+        statusEl.className = 'remote-task-status';
+        detailEl.textContent = task.error || '';
+      } else if (task.status === 'done') {
+        clearInterval(timer);
+        const cancelBtn = $(`remote-task-cancel-${taskId}`);
+        if (cancelBtn) cancelBtn.style.display = 'none';
+        barEl.style.width = '100%';
+        statusEl.textContent = '完成 ✓';
+        statusEl.className = 'remote-task-status done';
+        detailEl.textContent = `已保存：${task.filename}`;
+        showSnack(`✓ 远程下载完成：${task.filename}`);
+        loadFiles();
+        setTimeout(() => {
+          const el = $(`remote-task-${taskId}`);
+          if (el) el.remove();
+          if (!$('remoteTasksList').children.length) hide($('remoteTasksPanel'));
+        }, 5000);
+      } else if (task.status === 'cancelled') {
+        clearInterval(timer);
+        const cancelBtn = $(`remote-task-cancel-${taskId}`);
+        if (cancelBtn) cancelBtn.style.display = 'none';
+        barEl.style.width = '0%';
+        statusEl.textContent = '已取消';
+        statusEl.className = 'remote-task-status';
+        detailEl.textContent = '';
+        showSnack(`已取消下载：${task.filename}`);
+        setTimeout(() => {
+          const el = $(`remote-task-${taskId}`);
+          if (el) el.remove();
+          if (!$('remoteTasksList').children.length) hide($('remoteTasksPanel'));
+        }, 3000);
+      } else if (task.status === 'error') {
+        clearInterval(timer);
+        const cancelBtn = $(`remote-task-cancel-${taskId}`);
+        if (cancelBtn) cancelBtn.style.display = 'none';
+        barEl.style.width = '0%';
+        barEl.style.background = 'var(--md-error)';
+        statusEl.textContent = '失败';
+        statusEl.className = 'remote-task-status error';
+        detailEl.textContent = task.error || '未知错误';
+        showSnack(`✗ 远程下载失败：${task.error || '未知错误'}`);
+      }
+    } catch { /* keep polling */ }
+  }, 1000);
+}
+
 /* ── Global keyboard shortcuts ──────────────────────────────────────────── */
 
 document.addEventListener("keydown", (e) => {
@@ -659,8 +845,7 @@ document.addEventListener("keydown", (e) => {
     closeImageDialog();
     closeEditor();
     closeRename();
-    closeNewFile();
-  }
+    closeNewFile();    closeRemoteDownload();  }
 });
 
 /* ── Bootstrap ──────────────────────────────────────────────────────────── */

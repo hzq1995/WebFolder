@@ -39,12 +39,12 @@ COOKIE_NAME: str = "wf_token"
 # Absolute path to the directory where uploaded files are stored.
 UPLOAD_FOLDER: str = os.path.join(os.path.dirname(__file__), "uploads")
 
-# Maximum single-file upload size (bytes).  Default: 2 GB
-MAX_CONTENT_LENGTH: int = 2 * 1024 * 1024 * 1024
+# Maximum single-file upload size (bytes).  Default: 20 GB
+MAX_CONTENT_LENGTH: int = 20 * 1024 * 1024 * 1024
 
 # ---------------------------------------------------------------------------
 # Server
 # ---------------------------------------------------------------------------
 HOST: str = "0.0.0.0"
-PORT: int = 8080
+PORT: int = 5050
 DEBUG: bool = True

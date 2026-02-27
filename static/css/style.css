@@ -600,3 +600,66 @@ body {
   .tab-bar-inner { padding: 10px 14px; }
   .main-content  { padding: 16px 12px 80px; }
 }
+
+/* ── Remote Download Tasks Panel ────────────────────────────────────────── */
+.remote-tasks-panel {
+  margin-bottom: 16px;
+}
+
+.remote-tasks-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--md-on-surface-var);
+  padding: 4px 2px 8px;
+}
+
+.remote-task-item {
+  background: var(--md-surface);
+  border-radius: var(--radius-s);
+  padding: 10px 14px;
+  margin-bottom: 8px;
+  box-shadow: var(--md-elev-1);
+}
+
+.remote-task-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.remote-task-name {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.remote-task-status {
+  font-size: 12px;
+  flex-shrink: 0;
+  color: var(--md-on-surface-var);
+}
+.remote-task-status.done  { color: var(--md-success); font-weight: 500; }
+.remote-task-status.error { color: var(--md-error);   font-weight: 500; }
+
+.remote-task-detail {
+  font-size: 12px;
+  color: var(--md-on-surface-var);
+  margin-top: 4px;
+}
+
+.remote-task-cancel-btn {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  color: var(--md-on-surface-var);
+  opacity: 0.7;
+}
+.remote-task-cancel-btn:hover { opacity: 1; color: var(--md-error); }
+

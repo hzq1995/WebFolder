@@ -10,8 +10,13 @@ import mimetypes
 import os
 import re
 import secrets
+import threading
 import time
 import unicodedata
+import urllib.error
+import urllib.parse
+import urllib.request
+import uuid
 from datetime import datetime
 from functools import wraps
 
@@ -57,6 +62,10 @@ app.config["MAX_CONTENT_LENGTH"] = config.MAX_CONTENT_LENGTH
 app.secret_key = config.SECRET_KEY
 
 os.makedirs(config.UPLOAD_FOLDER, exist_ok=True)
+
+# Remote download task store: task_id -> task dict
+_remote_tasks: dict = {}
+_remote_tasks_lock = threading.Lock()
 
 
 # ---------------------------------------------------------------------------
@@ -431,6 +440,227 @@ def create_file():
     return jsonify({"ok": True, "file": info}), 201
 
 
+# ---- Remote download -------------------------------------------------------
+
+
+# Remote download configuration
+_DOWNLOAD_MAX_RETRIES = 3      # 最多重试次数
+_DOWNLOAD_TIMEOUT     = 30     # 每次连接/读取超时（秒）
+_DOWNLOAD_RETRY_DELAY = 3      # 首次重试等待秒数，之后翻倍（3 → 6 → 12）
+
+
+def _do_remote_download(task_id: str, url: str, custom_filename: str) -> None:
+    """Background thread: stream-download with resume, auto-retry and timeout."""
+    task = _remote_tasks[task_id]
+    save_path: str | None = None
+    filename:  str | None = None
+
+    for attempt in range(_DOWNLOAD_MAX_RETRIES + 1):
+        # ---------- exponential back-off before each retry ----------
+        if attempt > 0:
+            wait = _DOWNLOAD_RETRY_DELAY * (2 ** (attempt - 1))
+            task["status"] = "retrying"
+            task["retry"]  = attempt
+            task["error"]  = f"第 {attempt} 次重试，{wait}s 后恢复…"
+            # Interruptible sleep: check cancel flag every 0.5 s
+            for _ in range(int(wait * 2)):
+                if task.get("cancel"):
+                    task["status"] = "cancelled"
+                    task["error"]  = None
+                    return
+                time.sleep(0.5)
+
+        try:
+            # ---- resume: detect how many bytes already on disk ----
+            resume_from = 0
+            if save_path and os.path.isfile(save_path):
+                resume_from = os.path.getsize(save_path)
+
+            headers = {"User-Agent": "Mozilla/5.0 (compatible; WebFolder/1.0)"}
+            if resume_from > 0:
+                headers["Range"] = f"bytes={resume_from}-"
+
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=_DOWNLOAD_TIMEOUT) as resp:
+                status_code = resp.status
+
+                # ---- total size ----
+                raw_len       = resp.headers.get("Content-Length")
+                content_range = resp.headers.get("Content-Range", "")
+                if status_code == 206 and content_range:
+                    try:
+                        total = int(content_range.split("/")[-1])
+                    except (ValueError, IndexError):
+                        total = None
+                elif raw_len and raw_len.isdigit():
+                    total = int(raw_len) + resume_from
+                else:
+                    total = None
+                task["total"] = total
+
+                # ---- resolve filename (only once) ----
+                if not filename:
+                    filename = custom_filename
+                    if not filename:
+                        cd = resp.headers.get("Content-Disposition", "")
+                        if "filename=" in cd:
+                            fname_part = cd.split("filename=")[-1].strip().strip("\"'")
+                            filename = safe_filename(fname_part)
+                    if not filename:
+                        filename = safe_filename(
+                            os.path.basename(urllib.parse.urlparse(url).path)
+                        )
+                    if not filename:
+                        filename = "download"
+                    if "." not in os.path.basename(filename):
+                        ct  = resp.headers.get("Content-Type", "").split(";")[0].strip()
+                        ext = mimetypes.guess_extension(ct) if ct else None
+                        if ext:
+                            filename += ext
+
+                    # ---- resolve save_path & handle duplicates (once) ----
+                    save_path = os.path.join(config.UPLOAD_FOLDER, filename)
+                    if os.path.exists(save_path) and resume_from == 0:
+                        base, ext = os.path.splitext(filename)
+                        counter = 1
+                        while os.path.exists(save_path):
+                            filename  = f"{base}_{counter}{ext}"
+                            save_path = os.path.join(config.UPLOAD_FOLDER, filename)
+                            counter += 1
+
+                task["filename"] = filename
+                task["status"]   = "running"
+                task["error"]    = None
+
+                # ---- server refused Range → restart from byte 0 ----
+                if status_code == 206 and resume_from > 0:
+                    open_mode = "ab"
+                else:
+                    open_mode   = "wb"
+                    resume_from = 0
+
+                received = resume_from
+                with open(save_path, open_mode) as fh:
+                    while True:
+                        if task.get("cancel"):
+                            raise InterruptedError("user_cancel")
+                        chunk = resp.read(65536)
+                        if not chunk:
+                            break
+                        fh.write(chunk)
+                        received += len(chunk)
+                        task["received"] = received
+                        if total:
+                            task["progress"] = min(int(received / total * 100), 99)
+
+            # ---- success ----
+            task["received"] = received
+            task["progress"] = 100
+            task["status"]   = "done"
+            task["error"]    = None
+            return
+
+        except InterruptedError as exc:
+            # user cancelled — clean up partial file and stop immediately
+            task["status"] = "cancelled"
+            task["error"]  = None
+            if save_path and os.path.isfile(save_path):
+                try:
+                    os.remove(save_path)
+                except OSError:
+                    pass
+            return
+        except Exception as exc:
+            task["error"] = str(exc)
+            if attempt < _DOWNLOAD_MAX_RETRIES and not task.get("cancel"):
+                continue   # partial file kept on disk for resume
+            # all retries exhausted (or cancel arrived during retry wait)
+            task["status"] = "cancelled" if task.get("cancel") else "error"
+            if save_path and os.path.isfile(save_path):
+                try:
+                    os.remove(save_path)
+                except OSError:
+                    pass
+
+
+@app.route("/api/remote-download", methods=["POST"])
+@require_auth
+def remote_download_start():
+    data = request.get_json(silent=True) or {}
+    url = data.get("url", "").strip()
+    if not url:
+        return jsonify({"error": "URL 不能为空"}), 400
+
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        return jsonify({"error": "仅支持 http / https 链接"}), 400
+
+    custom_filename = safe_filename(data.get("filename", "").strip())
+
+    # Display name before actual download starts
+    display_name = custom_filename
+    if not display_name:
+        display_name = safe_filename(os.path.basename(parsed.path)) or "download"
+
+    task_id = str(uuid.uuid4())
+    task: dict = {
+        "id": task_id,
+        "url": url,
+        "filename": display_name,
+        "status": "pending",
+        "progress": 0,
+        "received": 0,
+        "total": None,
+        "error": None,
+        "retry": 0,
+        "max_retries": _DOWNLOAD_MAX_RETRIES,
+        "cancel": False,
+    }
+
+    with _remote_tasks_lock:
+        _remote_tasks[task_id] = task
+
+    t = threading.Thread(
+        target=_do_remote_download,
+        args=(task_id, url, custom_filename),
+        daemon=True,
+    )
+    t.start()
+
+    return jsonify({"ok": True, "task_id": task_id, "filename": display_name})
+
+
+@app.route("/api/remote-download/tasks")
+@require_auth
+def remote_download_tasks():
+    """Return all tasks that are still active (not yet done/error)."""
+    with _remote_tasks_lock:
+        active = [
+            t for t in _remote_tasks.values()
+            if t["status"] not in ("done", "error", "cancelled")
+        ]
+    return jsonify(active)
+
+
+@app.route("/api/remote-download/cancel/<task_id>", methods=["DELETE"])
+@require_auth
+def remote_download_cancel(task_id: str):
+    task = _remote_tasks.get(task_id)
+    if not task:
+        return jsonify({"error": "任务不存在"}), 404
+    task["cancel"] = True
+    return jsonify({"ok": True})
+
+
+@app.route("/api/remote-download/status/<task_id>")
+@require_auth
+def remote_download_status(task_id: str):
+    task = _remote_tasks.get(task_id)
+    if not task:
+        return jsonify({"error": "任务不存在"}), 404
+    return jsonify(task)
+
+
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
@@ -438,3 +668,4 @@ if __name__ == "__main__":
     print(f"  WebFolder running on http://{config.HOST}:{config.PORT}")
     print(f"  Upload directory: {config.UPLOAD_FOLDER}")
     app.run(host=config.HOST, port=config.PORT, debug=config.DEBUG)
+

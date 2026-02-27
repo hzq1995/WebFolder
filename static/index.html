@@ -21,7 +21,7 @@
   <!-- =====================================================================
        LOGIN SCREEN
   ====================================================================== -->
-  <div id="loginScreen" class="screen">
+  <div id="loginScreen" class="screen hidden">
     <div class="login-card md-elevation-4">
       <div class="login-logo">
         <span class="material-icons-round logo-icon">folder_open</span>
@@ -91,6 +91,10 @@
           <span class="material-icons-round">note_add</span>
           新建文件
         </button>
+        <button class="md-btn md-btn--tonal" id="remoteDownloadBtn" style="margin-left:8px">
+          <span class="material-icons-round">cloud_download</span>
+          远程下载
+        </button>
         <input type="file" id="fileInput" class="hidden" />
       </div>
 
@@ -116,6 +120,15 @@
         <div class="md-progress-bar">
           <div class="md-progress-bar__fill" id="downloadProgressBar" style="width:0%"></div>
         </div>
+      </div>
+
+      <!-- Remote download tasks panel -->
+      <div id="remoteTasksPanel" class="remote-tasks-panel hidden">
+        <div class="remote-tasks-header">
+          <span class="material-icons-round">cloud_sync</span>
+          <span>后台下载任务</span>
+        </div>
+        <div id="remoteTasksList"></div>
       </div>
 
       <!-- File list header -->
@@ -210,6 +223,37 @@
       <div class="md-dialog__actions">
         <button class="md-btn md-btn--text" id="renameCancelBtn">取消</button>
         <button class="md-btn md-btn--filled" id="renameConfirmBtn">确认</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Remote download dialog -->
+  <div class="md-dialog-backdrop hidden" id="remoteDownloadBackdrop">
+    <div class="md-dialog md-elevation-5">
+      <div class="md-dialog__icon">
+        <span class="material-icons-round" style="color:var(--md-primary)">cloud_download</span>
+      </div>
+      <h3 class="md-dialog__title">远程下载</h3>
+      <p style="font-size:13px;color:var(--md-on-surface-var);margin-bottom:16px">输入文件 URL，服务器将在后台下载并保存到文件夹</p>
+      <div class="md-text-field" style="margin: 0 0 10px;">
+        <label class="md-label" for="remoteUrlInput">下载链接 (http/https)</label>
+        <div class="md-input-wrapper">
+          <input id="remoteUrlInput" class="md-input" type="url" placeholder=" " />
+        </div>
+      </div>
+      <div class="md-text-field" style="margin: 0 0 8px;">
+        <label class="md-label" for="remoteFilenameInput">自定义文件名（可选）</label>
+        <div class="md-input-wrapper">
+          <input id="remoteFilenameInput" class="md-input" type="text" placeholder=" " />
+        </div>
+      </div>
+      <span class="md-helper" id="remoteDownloadError"></span>
+      <div class="md-dialog__actions">
+        <button class="md-btn md-btn--text" id="remoteDownloadCancelBtn">取消</button>
+        <button class="md-btn md-btn--filled" id="remoteDownloadConfirmBtn">
+          <span class="material-icons-round">download</span>
+          开始下载
+        </button>
       </div>
     </div>
   </div>
