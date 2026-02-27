@@ -38,7 +38,7 @@ Access your files from any device — protected by a password with a 30-day "rem
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/Tenzizi/WebFolder.git
+git clone https://github.com/hzq1995/WebFolder.git
 cd WebFolder
 
 # 2. (Optional) Create a virtual environment
