@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WebFolder</title>
+
+  <!-- Google Fonts: Roboto + Material Icons -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet" />
+
+  <link rel="stylesheet" href="/static/css/style.css" />
+</head>
+<body>
+
+  <!-- =====================================================================
+       LOGIN SCREEN
+  ====================================================================== -->
+  <div id="loginScreen" class="screen">
+    <div class="login-card md-elevation-4">
+      <div class="login-logo">
+        <span class="material-icons-round logo-icon">folder_open</span>
+        <h1 class="login-title">WebFolder</h1>
+        <p class="login-subtitle">安全的网络文件夹</p>
+      </div>
+
+      <div class="md-text-field" id="passwordField">
+        <label class="md-label" for="passwordInput">访问密码</label>
+        <div class="md-input-wrapper">
+          <input
+            id="passwordInput"
+            class="md-input"
+            type="password"
+            autocomplete="current-password"
+            placeholder=" "
+          />
+          <button class="icon-btn toggle-pw" id="togglePw" title="显示/隐藏密码" type="button">
+            <span class="material-icons-round" id="togglePwIcon">visibility_off</span>
+          </button>
+        </div>
+        <span class="md-helper" id="loginError"></span>
+      </div>
+
+      <button class="md-btn md-btn--filled full-width" id="loginBtn">
+        <span class="material-icons-round">lock_open</span>
+        登录
+      </button>
+    </div>
+  </div>
+
+  <!-- =====================================================================
+       MAIN FILE-MANAGER SCREEN
+  ====================================================================== -->
+  <div id="mainScreen" class="screen hidden">
+
+    <!-- Top App Bar -->
+    <header class="top-app-bar md-elevation-2">
+      <div class="tab-bar-inner">
+        <div class="app-bar-leading">
+          <span class="material-icons-round app-bar-icon">folder_open</span>
+          <span class="app-bar-title">WebFolder</span>
+        </div>
+        <div class="app-bar-actions">
+          <button class="icon-btn" id="refreshBtn" title="刷新">
+            <span class="material-icons-round">refresh</span>
+          </button>
+          <button class="icon-btn" id="logoutBtn" title="退出登录">
+            <span class="material-icons-round">logout</span>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Content -->
+    <main class="main-content">
+
+      <!-- Upload zone -->
+      <div class="upload-zone" id="uploadZone">
+        <span class="material-icons-round upload-zone-icon">cloud_upload</span>
+        <p class="upload-zone-text">拖拽文件到此处，或</p>
+        <button class="md-btn md-btn--tonal" id="selectFileBtn">
+          <span class="material-icons-round">attach_file</span>
+          选择文件
+        </button>
+        <button class="md-btn md-btn--tonal" id="newFileBtn" style="margin-left:8px">
+          <span class="material-icons-round">note_add</span>
+          新建文件
+        </button>
+        <input type="file" id="fileInput" class="hidden" />
+      </div>
+
+      <!-- Upload progress -->
+      <div class="progress-container hidden" id="uploadProgressContainer">
+        <div class="progress-info">
+          <span class="material-icons-round">upload</span>
+          <span id="uploadProgressLabel">正在上传...</span>
+          <span id="uploadProgressPct" class="progress-pct">0%</span>
+        </div>
+        <div class="md-progress-bar">
+          <div class="md-progress-bar__fill" id="uploadProgressBar" style="width:0%"></div>
+        </div>
+      </div>
+
+      <!-- Download progress -->
+      <div class="progress-container hidden" id="downloadProgressContainer">
+        <div class="progress-info">
+          <span class="material-icons-round">download</span>
+          <span id="downloadProgressLabel">正在下载...</span>
+          <span id="downloadProgressPct" class="progress-pct">0%</span>
+        </div>
+        <div class="md-progress-bar">
+          <div class="md-progress-bar__fill" id="downloadProgressBar" style="width:0%"></div>
+        </div>
+      </div>
+
+      <!-- File list header -->
+      <div class="file-list-header">
+        <span class="file-col-name">名称</span>
+        <span class="file-col-size">大小</span>
+        <span class="file-col-date">修改时间</span>
+        <span class="file-col-actions">操作</span>
+      </div>
+
+      <!-- File list -->
+      <div id="fileList" class="file-list">
+        <div class="empty-state hidden" id="emptyState">
+          <span class="material-icons-round empty-icon">folder_off</span>
+          <p>还没有文件，快来上传吧！</p>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <!-- =====================================================================
+       DIALOGS
+  ====================================================================== -->
+
+  <!-- Confirm delete dialog -->
+  <div class="md-dialog-backdrop hidden" id="deleteDialogBackdrop">
+    <div class="md-dialog md-elevation-5">
+      <div class="md-dialog__icon">
+        <span class="material-icons-round" style="color:var(--md-error)">delete_forever</span>
+      </div>
+      <h3 class="md-dialog__title">删除文件</h3>
+      <p class="md-dialog__body" id="deleteDialogBody">确定要删除这个文件吗？此操作不可撤销。</p>
+      <div class="md-dialog__actions">
+        <button class="md-btn md-btn--text" id="deleteCancelBtn">取消</button>
+        <button class="md-btn md-btn--filled md-btn--error" id="deleteConfirmBtn">删除</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Image preview dialog -->
+  <div class="md-dialog-backdrop hidden" id="imageDialogBackdrop">
+    <div class="md-dialog md-dialog--wide md-elevation-5">
+      <div class="md-dialog__toolbar">
+        <span class="md-dialog__title" id="imageDialogTitle">预览</span>
+        <button class="icon-btn" id="imageDialogClose">
+          <span class="material-icons-round">close</span>
+        </button>
+      </div>
+      <div class="md-dialog__image-body">
+        <img id="previewImg" src="" alt="预览图片" />
+      </div>
+    </div>
+  </div>
+
+  <!-- Text editor dialog -->
+  <div class="md-dialog-backdrop hidden" id="editorDialogBackdrop">
+    <div class="md-dialog md-dialog--wide md-dialog--tall md-elevation-5">
+      <div class="md-dialog__toolbar">
+        <span class="md-dialog__title" id="editorDialogTitle">编辑文件</span>
+        <button class="icon-btn" id="editorDialogClose">
+          <span class="material-icons-round">close</span>
+        </button>
+      </div>
+      <div class="md-dialog__editor-body">
+        <textarea id="editorTextarea" spellcheck="false" autocomplete="off"></textarea>
+      </div>
+      <div class="md-dialog__actions">
+        <button class="md-btn md-btn--text" id="editorCancelBtn">取消</button>
+        <button class="md-btn md-btn--filled" id="editorSaveBtn">
+          <span class="material-icons-round">save</span>
+          保存
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Rename dialog -->
+  <div class="md-dialog-backdrop hidden" id="renameDialogBackdrop">
+    <div class="md-dialog md-elevation-5">
+      <div class="md-dialog__icon">
+        <span class="material-icons-round" style="color:var(--md-primary)">drive_file_rename_outline</span>
+      </div>
+      <h3 class="md-dialog__title">重命名</h3>
+      <div class="md-text-field" style="margin: 12px 0 8px;">
+        <label class="md-label" for="renameInput">新文件名</label>
+        <div class="md-input-wrapper">
+          <input id="renameInput" class="md-input" type="text" placeholder=" " />
+        </div>
+        <span class="md-helper" id="renameError"></span>
+      </div>
+      <div class="md-dialog__actions">
+        <button class="md-btn md-btn--text" id="renameCancelBtn">取消</button>
+        <button class="md-btn md-btn--filled" id="renameConfirmBtn">确认</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast / Snackbar -->
+  <div class="md-snackbar hidden" id="snackbar">
+    <span id="snackbarMsg"></span>
+  </div>
+
+  <!-- New file dialog -->
+  <div class="md-dialog-backdrop hidden" id="newFileDialogBackdrop">
+    <div class="md-dialog md-elevation-5">
+      <div class="md-dialog__icon">
+        <span class="material-icons-round" style="color:var(--md-primary)">note_add</span>
+      </div>
+      <h3 class="md-dialog__title">新建文本文件</h3>
+      <div class="md-text-field" style="margin: 12px 0 8px;">
+        <label class="md-label" for="newFileNameInput">文件名</label>
+        <div class="md-input-wrapper">
+          <input id="newFileNameInput" class="md-input" type="text" placeholder=" " />
+        </div>
+        <span class="md-helper" id="newFileError"></span>
+      </div>
+      <div class="md-dialog__actions">
+        <button class="md-btn md-btn--text" id="newFileCancelBtn">取消</button>
+        <button class="md-btn md-btn--filled" id="newFileConfirmBtn">
+          <span class="material-icons-round">create</span>
+          创建
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/js/app.js"></script>
+</body>
+</html>
