@@ -66,6 +66,10 @@
           <span class="app-bar-title">WebFolder</span>
         </div>
         <div class="app-bar-actions">
+          <button class="md-btn md-btn--text" id="apiDocBtn" title="API 文档" style="gap:4px;padding:6px 12px;font-size:13px;">
+            <span class="material-icons-round" style="font-size:16px">api</span>
+            API
+          </button>
           <button class="icon-btn" id="refreshBtn" title="刷新">
             <span class="material-icons-round">refresh</span>
           </button>
@@ -284,6 +288,107 @@
           创建
         </button>
       </div>
+    </div>
+  </div>
+
+  <!-- API Doc dialog -->
+  <div class="md-dialog-backdrop hidden" id="apiDocBackdrop">
+    <div class="md-dialog md-dialog--wide md-dialog--tall md-dialog--doc md-elevation-5">
+      <div class="md-dialog__toolbar">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span class="material-icons-round" style="color:var(--md-primary)">api</span>
+          <span class="md-dialog__title" style="margin:0">API 文档</span>
+        </div>
+        <button class="icon-btn" id="apiDocClose">
+          <span class="material-icons-round">close</span>
+        </button>
+      </div>
+      <div class="md-dialog__doc-body">
+
+        <!-- Auth -->
+        <div class="doc-section">
+          <h3 class="doc-section-title">认证方式</h3>
+          <p class="doc-desc">所有接口需通过以下两种方式之一认证：</p>
+          <ul class="doc-list">
+            <li><strong>浏览器</strong>：自动使用登录 Cookie，无需额外操作。</li>
+            <li><strong>命令行 / curl</strong>：在请求头加 <code>Authorization: Bearer &lt;API_KEY&gt;</code>。API Key 默认与访问密码相同，也可在 <code>config.py</code> 中单独设置 <code>API_KEY</code> 字段。</li>
+          </ul>
+          <div class="doc-apikey-row">
+            <span class="doc-label">当前 API Key</span>
+            <code class="doc-apikey-val" id="docApiKeyVal">加载中…</code>
+            <button class="md-btn md-btn--tonal" id="docApiKeyCopy" style="padding:4px 10px;font-size:12px;" title="复制">
+              <span class="material-icons-round" style="font-size:15px">content_copy</span>复制
+            </button>
+          </div>
+          <p class="doc-hint" id="docApiKeyHint"></p>
+        </div>
+
+        <!-- Endpoints table -->
+        <div class="doc-section">
+          <h3 class="doc-section-title">接口一览</h3>
+          <table class="doc-table">
+            <thead><tr><th>方法</th><th>路径</th><th>说明</th></tr></thead>
+            <tbody>
+              <tr><td><span class="doc-method get">GET</span></td><td><code>/api/files</code></td><td>列出所有文件</td></tr>
+              <tr><td><span class="doc-method post">POST</span></td><td><code>/api/upload</code></td><td>上传文件（multipart/form-data，字段名 <code>file</code>）</td></tr>
+              <tr><td><span class="doc-method get">GET</span></td><td><code>/api/download/&lt;filename&gt;</code></td><td>下载文件</td></tr>
+              <tr><td><span class="doc-method del">DELETE</span></td><td><code>/api/delete/&lt;filename&gt;</code></td><td>删除文件</td></tr>
+              <tr><td><span class="doc-method post">POST</span></td><td><code>/api/create</code></td><td>创建新文本文件（JSON body）</td></tr>
+              <tr><td><span class="doc-method patch">PATCH</span></td><td><code>/api/rename/&lt;filename&gt;</code></td><td>重命名文件（JSON body）</td></tr>
+              <tr><td><span class="doc-method post">POST</span></td><td><code>/api/remote-download</code></td><td>服务端远程下载（JSON body）</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Curl examples -->
+        <div class="doc-section">
+          <h3 class="doc-section-title">curl 示例</h3>
+          <p class="doc-desc">以下示例中 <code id="docBaseUrlInline">http://your-server:5050</code> 为服务地址，<code id="docKeyInline">YOUR_API_KEY</code> 为你的 API Key。</p>
+
+          <div class="doc-example">
+            <div class="doc-example-title">列出所有文件</div>
+            <pre class="doc-code" id="ex-list"></pre>
+            <button class="doc-copy-btn" data-target="ex-list"><span class="material-icons-round">content_copy</span></button>
+          </div>
+
+          <div class="doc-example">
+            <div class="doc-example-title">上传文件</div>
+            <pre class="doc-code" id="ex-upload"></pre>
+            <button class="doc-copy-btn" data-target="ex-upload"><span class="material-icons-round">content_copy</span></button>
+          </div>
+
+          <div class="doc-example">
+            <div class="doc-example-title">下载文件</div>
+            <pre class="doc-code" id="ex-download"></pre>
+            <button class="doc-copy-btn" data-target="ex-download"><span class="material-icons-round">content_copy</span></button>
+          </div>
+
+          <div class="doc-example">
+            <div class="doc-example-title">删除文件</div>
+            <pre class="doc-code" id="ex-delete"></pre>
+            <button class="doc-copy-btn" data-target="ex-delete"><span class="material-icons-round">content_copy</span></button>
+          </div>
+
+          <div class="doc-example">
+            <div class="doc-example-title">创建文本文件</div>
+            <pre class="doc-code" id="ex-create"></pre>
+            <button class="doc-copy-btn" data-target="ex-create"><span class="material-icons-round">content_copy</span></button>
+          </div>
+
+          <div class="doc-example">
+            <div class="doc-example-title">重命名文件</div>
+            <pre class="doc-code" id="ex-rename"></pre>
+            <button class="doc-copy-btn" data-target="ex-rename"><span class="material-icons-round">content_copy</span></button>
+          </div>
+        </div>
+
+        <!-- Response format -->
+        <div class="doc-section">
+          <h3 class="doc-section-title">返回格式</h3>
+          <p class="doc-desc">所有接口均返回 JSON。成功时包含 <code>"ok": true</code> 或对应数据字段；失败时包含 <code>"error": "..."</code> 及对应 HTTP 状态码（400 / 401 / 404 / 409 等）。</p>
+        </div>
+
+      </div><!-- /.md-dialog__doc-body -->
     </div>
   </div>
 

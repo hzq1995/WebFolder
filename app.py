@@ -149,13 +149,21 @@ def _verify_signed_token(token: str) -> bool:
 
 
 def require_auth(f):
-    """Decorator: reject requests without a valid auth cookie."""
+    """Decorator: reject requests without a valid auth cookie or API key."""
     @wraps(f)
     def decorated(*args, **kwargs):
+        # Cookie-based auth (browser)
         token = request.cookies.get(config.COOKIE_NAME, "")
-        if not _verify_signed_token(token):
-            return jsonify({"error": "Unauthorized"}), 401
-        return f(*args, **kwargs)
+        if _verify_signed_token(token):
+            return f(*args, **kwargs)
+        # API key auth (CLI / curl)
+        if config.API_KEY:
+            auth_header = request.headers.get("Authorization", "")
+            if auth_header.startswith("Bearer "):
+                supplied_key = auth_header[7:]
+                if hmac.compare_digest(supplied_key, config.API_KEY):
+                    return f(*args, **kwargs)
+        return jsonify({"error": "Unauthorized"}), 401
     return decorated
 
 
@@ -249,6 +257,13 @@ def auth_check():
     if _verify_signed_token(token):
         return jsonify({"authenticated": True})
     return jsonify({"authenticated": False}), 401
+
+
+@app.route("/api/apikey")
+@require_auth
+def get_apikey():
+    """Return the configured API key so the DOC page can display it."""
+    return jsonify({"api_key": config.API_KEY or None})
 
 
 # ---- File list -------------------------------------------------------------

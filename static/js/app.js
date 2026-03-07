@@ -347,68 +347,17 @@ function uploadFile(file) {
 
 /* ── Download ───────────────────────────────────────────────────────────── */
 
-async function downloadFile(filename) {
-  const progContainer = $("downloadProgressContainer");
-  const progBar       = $("downloadProgressBar");
-  const progPct       = $("downloadProgressPct");
-  const progLabel     = $("downloadProgressLabel");
-
-  progLabel.textContent = `正在下载：${filename}`;
-  progBar.style.width   = "0%";
-  progPct.textContent   = "0%";
-  show(progContainer);
-
-  try {
-    const res = await fetch(`/api/download/${encodeURIComponent(filename)}`, {
-      credentials: "same-origin",
-    });
-
-    if (!res.ok) {
-      hide(progContainer);
-      showSnack("✗ 下载失败");
-      return;
-    }
-
-    const contentLength = res.headers.get("Content-Length");
-    const total = contentLength ? parseInt(contentLength, 10) : null;
-    let received = 0;
-    const chunks = [];
-
-    const reader = res.body.getReader();
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      chunks.push(value);
-      received += value.byteLength;
-      if (total) {
-        const pct = Math.min(Math.round((received / total) * 100), 100);
-        progBar.style.width = pct + "%";
-        progPct.textContent = pct + "%";
-      } else {
-        // Unknown size — show indeterminate pulse
-        progBar.style.width = "60%";
-        progPct.textContent = fmtSize(received);
-      }
-    }
-
-    // Combine chunks and trigger browser save dialog
-    const blob = new Blob(chunks);
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement("a");
-    a.href     = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
-
-    progBar.style.width = "100%";
-    progPct.textContent = "100%";
-    setTimeout(() => hide(progContainer), 1200);
-    showSnack(`✓ 下载完成：${filename}`);
-  } catch {
-    hide(progContainer);
-    showSnack("✗ 网络错误，下载失败");
-  }
+function downloadFile(filename) {
+  // Use a direct anchor navigation so the browser handles streaming natively.
+  // The auth cookie is sent automatically with same-origin requests, so the
+  // @require_auth check on /api/download will still pass.
+  const a = document.createElement("a");
+  a.href = `/api/download/${encodeURIComponent(filename)}`;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => a.remove(), 100);
+  showSnack(`⬇ 开始下载：${filename}`);
 }
 
 /* ── Delete ─────────────────────────────────────────────────────────────── */
@@ -845,8 +794,86 @@ document.addEventListener("keydown", (e) => {
     closeImageDialog();
     closeEditor();
     closeRename();
-    closeNewFile();    closeRemoteDownload();  }
+    closeNewFile();
+    closeRemoteDownload();
+    closeApiDoc();
+  }
 });
+
+/* ── API Doc Dialog ───────────────────────────────────────────────────────────────────────────────────── */
+
+$("apiDocBtn").addEventListener("click", openApiDoc);
+$("apiDocClose").addEventListener("click", closeApiDoc);
+$("apiDocBackdrop").addEventListener("click", (e) => {
+  if (e.target === $("apiDocBackdrop")) closeApiDoc();
+});
+
+async function openApiDoc() {
+  const base = `${window.location.protocol}//${window.location.host}`;
+  _renderDocExamples(base, "YOUR_API_KEY");
+  show($("apiDocBackdrop"));
+
+  try {
+    const res = await fetch("/api/apikey", { credentials: "same-origin" });
+    const data = await res.json();
+    const key = data.api_key;
+    const valEl  = $("docApiKeyVal");
+    const hintEl = $("docApiKeyHint");
+    if (key) {
+      valEl.textContent = key;
+      hintEl.textContent = "";
+      _renderDocExamples(base, key);
+    } else {
+      valEl.textContent = "（未配置）";
+      hintEl.textContent = "在 config.py 中设置 API_KEY 字段后即可通过命令行访问。";
+    }
+  } catch {
+    $("docApiKeyVal").textContent = "（获取失败）";
+  }
+}
+
+function closeApiDoc() {
+  hide($("apiDocBackdrop"));
+}
+
+$("docApiKeyCopy").addEventListener("click", () => {
+  const key = $("docApiKeyVal").textContent;
+  if (!key || key.startsWith("（")) return;
+  navigator.clipboard.writeText(key).then(() => showSnack("✓ API Key 已复制"));
+});
+
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest(".doc-copy-btn");
+  if (!btn) return;
+  const pre = $(btn.dataset.target);
+  if (!pre) return;
+  navigator.clipboard.writeText(pre.textContent).then(() => showSnack("✓ 已复制"));
+});
+
+function _renderDocExamples(base, key) {
+  const h = `-H "Authorization: Bearer ${key}"`;
+
+  $("docBaseUrlInline").textContent = base;
+  $("docKeyInline").textContent     = key;
+
+  $("ex-list").textContent =
+    `curl ${h} \\\n  ${base}/api/files`;
+
+  $("ex-upload").textContent =
+    `curl -X POST ${h} \\\n  -F "file=@/path/to/file.txt" \\\n  ${base}/api/upload`;
+
+  $("ex-download").textContent =
+    `curl ${h} \\\n  "${base}/api/download/filename.txt" \\\n  -o filename.txt`;
+
+  $("ex-delete").textContent =
+    `curl -X DELETE ${h} \\\n  "${base}/api/delete/filename.txt"`;
+
+  $("ex-create").textContent =
+    `curl -X POST ${h} \\\n  -H "Content-Type: application/json" \\\n  -d '{"filename":"notes.txt","content":"Hello World"}' \\\n  ${base}/api/create`;
+
+  $("ex-rename").textContent =
+    `curl -X PATCH ${h} \\\n  -H "Content-Type: application/json" \\\n  -d '{"newName":"new_name.txt"}' \\\n  "${base}/api/rename/old_name.txt"`;
+}
 
 /* ── Bootstrap ──────────────────────────────────────────────────────────── */
 initApp();

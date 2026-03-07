@@ -43,6 +43,14 @@ UPLOAD_FOLDER: str = os.path.join(os.path.dirname(__file__), "uploads")
 MAX_CONTENT_LENGTH: int = 20 * 1024 * 1024 * 1024
 
 # ---------------------------------------------------------------------------
+# CLI / API Key
+# ---------------------------------------------------------------------------
+# Used for command-line / curl access via:
+#   -H "Authorization: Bearer <API_KEY>"
+# Defaults to DEFAULT_PASSWORD so no extra configuration is needed.
+API_KEY: str = os.environ.get("WEBFOLDER_API_KEY", DEFAULT_PASSWORD)
+
+# ---------------------------------------------------------------------------
 # Server
 # ---------------------------------------------------------------------------
 HOST: str = "0.0.0.0"
