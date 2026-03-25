@@ -370,25 +370,35 @@ function copyDownloadLink(filename) {
     .then((data) => {
       const base = `${location.origin}/api/download/${encodeURIComponent(filename)}`;
       const url = data.api_key ? `${base}?token=${encodeURIComponent(data.api_key)}` : base;
-      const doCopy = () => {
-        navigator.clipboard.writeText(url).then(
-          () => showSnack(`🔗 链接已复制：${filename}`),
-          () => {
-            const ta = document.createElement("textarea");
-            ta.value = url;
-            ta.style.position = "fixed";
-            ta.style.opacity = "0";
-            document.body.appendChild(ta);
-            ta.select();
-            document.execCommand("copy");
-            ta.remove();
-            showSnack(`🔗 链接已复制：${filename}`);
-          }
-        );
-      };
-      doCopy();
+      _writeToClipboard(url, `🔗 链接已复制：${filename}`);
     })
     .catch(() => showSnack("❌ 获取授权信息失败"));
+}
+
+function _writeToClipboard(text, successMsg) {
+  const fallback = () => {
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      ta.remove();
+      showSnack(successMsg);
+    } catch (e) {
+      showSnack("❌ 复制失败，请手动复制");
+    }
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(
+      () => showSnack(successMsg),
+      () => fallback()
+    );
+  } else {
+    fallback();
+  }
 }
 
 /* ── Delete ─────────────────────────────────────────────────────────────── */
