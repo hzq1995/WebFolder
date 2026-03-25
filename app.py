@@ -156,13 +156,17 @@ def require_auth(f):
         token = request.cookies.get(config.COOKIE_NAME, "")
         if _verify_signed_token(token):
             return f(*args, **kwargs)
-        # API key auth (CLI / curl)
+        # API key auth (CLI / curl / URL query param)
         if config.API_KEY:
             auth_header = request.headers.get("Authorization", "")
             if auth_header.startswith("Bearer "):
                 supplied_key = auth_header[7:]
                 if hmac.compare_digest(supplied_key, config.API_KEY):
                     return f(*args, **kwargs)
+            # ?token=<api_key> — allows direct browser access via copied link
+            query_token = request.args.get("token", "")
+            if query_token and hmac.compare_digest(query_token, config.API_KEY):
+                return f(*args, **kwargs)
         return jsonify({"error": "Unauthorized"}), 401
     return decorated
 

@@ -238,6 +238,9 @@ function buildFileRow(file) {
     `<button class="icon-btn download-btn" title="下载" data-name="${esc(file.name)}">
        <span class="material-icons-round">download</span>
      </button>`,
+    `<button class="icon-btn copylink-btn" title="复制下载链接" data-name="${esc(file.name)}">
+       <span class="material-icons-round">link</span>
+     </button>`,
     `<button class="icon-btn rename-btn" title="重命名" data-name="${esc(file.name)}">
        <span class="material-icons-round">drive_file_rename_outline</span>
      </button>`,
@@ -258,6 +261,7 @@ function buildFileRow(file) {
 
   // Bind button events
   row.querySelector(".download-btn")?.addEventListener("click", () => downloadFile(file.name));
+  row.querySelector(".copylink-btn")?.addEventListener("click", () => copyDownloadLink(file.name));
   row.querySelector(".delete-btn")?.addEventListener("click", () => confirmDelete(file.name));
   row.querySelector(".preview-btn")?.addEventListener("click", () => previewImage(file.name));
   row.querySelector(".edit-btn")?.addEventListener("click", () => openEditor(file.name));
@@ -358,6 +362,33 @@ function downloadFile(filename) {
   a.click();
   setTimeout(() => a.remove(), 100);
   showSnack(`⬇ 开始下载：${filename}`);
+}
+
+function copyDownloadLink(filename) {
+  fetch("/api/apikey", { credentials: "same-origin" })
+    .then((r) => r.json())
+    .then((data) => {
+      const base = `${location.origin}/api/download/${encodeURIComponent(filename)}`;
+      const url = data.api_key ? `${base}?token=${encodeURIComponent(data.api_key)}` : base;
+      const doCopy = () => {
+        navigator.clipboard.writeText(url).then(
+          () => showSnack(`🔗 链接已复制：${filename}`),
+          () => {
+            const ta = document.createElement("textarea");
+            ta.value = url;
+            ta.style.position = "fixed";
+            ta.style.opacity = "0";
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand("copy");
+            ta.remove();
+            showSnack(`🔗 链接已复制：${filename}`);
+          }
+        );
+      };
+      doCopy();
+    })
+    .catch(() => showSnack("❌ 获取授权信息失败"));
 }
 
 /* ── Delete ─────────────────────────────────────────────────────────────── */
